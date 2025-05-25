@@ -1,4 +1,5 @@
 watchdog
 kafka-python
 pandas
+python-dotenv
 git+ssh://git@github.com/Automated-Datavault-Schema-Evolution/MyLogger.git@v0.2.1#egg=mylogger
