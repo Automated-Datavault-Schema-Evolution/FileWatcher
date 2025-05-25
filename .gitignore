@@ -4,6 +4,7 @@
 *.csv
 .idea
 *.pkl
+*.env
 
 
 
