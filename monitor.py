@@ -8,6 +8,7 @@ from kafka import KafkaProducer
 from logger import log
 import hashlib
 import pickle
+import concurrent.futures
 
 #CONFIG
 #TODO: setup via dedicated utils-platform and env-file
@@ -50,6 +51,22 @@ def get_new_rows_by_hash(file_path):
         file_row_hashes[file_path] = list(new_hashes)
     return pd.DataFrame(new_rows, columns=df.columns) if new_rows else None
 
+def process_single_file_initial(file_path):
+    """Process and send a single CSV file for initial crawl."""
+    try:
+        df = pd.read_csv(file_path)
+        if not df.empty:
+            payload = df.to_csv(index=False)
+            producer.send(KAFKA_TOPIC, payload.encode('utf-8'))
+            log.info(f"Sent entire file {file_path} ({len(df)} rows) to Kafka (initial crawl).")
+            hashes = [row_hash(row) for _, row in df.iterrows()]
+            with state_lock:
+                file_row_hashes[file_path] = hashes
+        else:
+            log.info(f"File {file_path} is empty. Skipping.")
+    except Exception as e:
+        log.error(f"Initial crawl failed for {file_path}: {e}")
+
 #TODO: refactor for dedicated utils file and reuse
 def initial_crawl_and_send():
     # Only do this if no state exists yet
@@ -57,22 +74,14 @@ def initial_crawl_and_send():
         log.info("State file already exists; skipping initial crawl.")
         return
     log.info("No state file found. Performing initial crawl of directory...")
-    for filename in os.listdir(BASE_DIRECTORY):
-        if filename.endswith('.csv'):
-            file_path = os.path.join(BASE_DIRECTORY, filename)
-            try:
-                df = pd.read_csv(file_path)
-                if not df.empty:
-                    payload = df.to_csv(index=False)
-                    producer.send(KAFKA_TOPIC, payload.encode('utf-8'))
-                    log.info(f"Sent entire file {file_path} ({len(df)} rows) to Kafka (initial crawl).")
-                    hashes = [row_hash(row) for _, row in df.iterrows()]
-                    with state_lock:
-                        file_row_hashes[file_path] = hashes
-                else:
-                    log.info(f"File {file_path} is empty. Skipping.")
-            except Exception as e:
-                log.error(f"Initial crawl failed for {file_path}: {e}")
+    files_to_process = [
+        os.path.join(BASE_DIRECTORY, f)
+        for f in os.listdir(BASE_DIRECTORY)
+        if f.endswith('.csv')
+    ]
+    with concurrent.futures.ThreadPoolExecutor() as executor:
+        # You can set max_workers=N for a limit, default is os.cpu_count()
+        executor.map(process_single_file_initial, files_to_process)
     save_state(file_row_hashes)
 
 #persist state
