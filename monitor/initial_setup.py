@@ -15,7 +15,7 @@ def process_single_file_initial(file_path, producer, file_row_hashes):
         df = pd.read_csv(file_path)
         if not df.empty:
             send_df_in_chunks(df, producer, KAFKA_TOPIC, chunk_size_rows=CHUNK_SIZE_ROWS,
-                              max_bytes=MAX_CHUNK_BYTES)
+                              max_bytes=MAX_CHUNK_BYTES, source_file=file_path)
             hashes = [row_hash(row) for _, row in df.iterrows()]
             with state_lock:
                 file_row_hashes[file_path] = hashes

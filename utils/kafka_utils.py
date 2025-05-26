@@ -28,7 +28,7 @@ def kafka_send_callback(success_message, error_message):
     return on_success, on_error
 
 
-def send_df_in_chunks(df, producer, topic, chunk_size_rows=1000, max_bytes=1000000):
+def send_df_in_chunks(df, producer, topic, source_file, chunk_size_rows=1000, max_bytes=1000000):
     """
     Sends a DataFrame to Kafka in chunks.
     - chunk_size_rows: max rows per chunk (default: 1000)
@@ -43,15 +43,15 @@ def send_df_in_chunks(df, producer, topic, chunk_size_rows=1000, max_bytes=10000
             # If even a chunk is too big (e.g. lots of columns), halve and send recursively
             if chunk_size_rows > 1:
                 half = chunk_size_rows // 2
-                send_df_in_chunks(chunk.iloc[:half], producer, topic, half, max_bytes)
-                send_df_in_chunks(chunk.iloc[half:], producer, topic, half, max_bytes)
+                send_df_in_chunks(chunk.iloc[:half], producer, topic, source_file, half, max_bytes)
+                send_df_in_chunks(chunk.iloc[half:], producer, topic, source_file, half, max_bytes)
             else:
                 log.error(f"Single row exceeds max Kafka message size: {len(payload_bytes)} bytes")
             continue
 
         on_success, on_error = kafka_send_callback(
-            f"Sent chunk with {len(chunk)} rows.",
-            f"Failed to send chunk with {len(chunk)} rows."
+            f"Sent chunk with {len(chunk)} rows from {source_file}.",
+            f"Failed to send chunk with {len(chunk)} rows from {source_file}."
         )
         fut = producer.send(topic, payload_bytes)
         fut.add_callback(on_success)
