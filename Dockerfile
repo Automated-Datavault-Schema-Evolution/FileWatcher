@@ -20,4 +20,4 @@ RUN --mount=type=ssh pip install -r requirements.txt
 
 COPY . .
 
-CMD ["python", "-m", "main.main"]
+CMD ["python", "-m", "main"]
