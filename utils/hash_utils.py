@@ -11,6 +11,17 @@ def row_hash(row):
     return hashed
 
 
+def get_new_rows_by_offset(file_path, last_row_idx):
+    # Efficiently read just the new rows (header always included, so skip 1+N)
+    try:
+        df = pd.read_csv(file_path, skiprows=range(1, last_row_idx + 1))
+        log.debug(f"Loaded {len(df)} new rows from {file_path}")
+        return df
+    except Exception as e:
+        log.error(f"Failed to read {file_path}: {e}")
+        return pd.DataFrame()
+
+
 def get_new_rows_by_hash(file_path, file_row_hashes, state_lock):
     log.debug(f"(Thread: {threading.get_ident()}) Reading file: {file_path}")
     try:

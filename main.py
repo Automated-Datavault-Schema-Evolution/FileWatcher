@@ -2,33 +2,39 @@ import os
 import threading
 import time
 
-import pandas as pd
 from logger import log
 from watchdog.observers import Observer
 
 from config.config import BASE_DIRECTORY
 from monitor.event_handlers import CSVHashEventHandler
 from monitor.initial_setup import initial_crawl_and_send
-from utils.hash_utils import row_hash
 from utils.kafka_utils import get_kafka_producer
 from utils.state_utils import save_state, load_state, state_lock
 
 
-def monitor_directory(file_row_hashes, producer):
-    log.info("Monitoring starting up. BASE_DIRECTORY=%s", BASE_DIRECTORY)
+def monitor_directory(file_offsets, producer):
+    log.info(f"Monitoring starting up. BASE_DIRECTORY={BASE_DIRECTORY}")
     for filename in os.listdir(BASE_DIRECTORY):
         if filename.endswith('.csv'):
             file_path = os.path.join(BASE_DIRECTORY, filename)
             try:
-                df = pd.read_csv(file_path)
-                hashes = [row_hash(row) for _, row in df.iterrows()]
-                file_row_hashes[file_path] = hashes
-                log.debug(f"Loaded {len(hashes)} hashes for {file_path}")
-            except Exception as e:
-                log.error(f"Initial load failed for {file_path}: {e}")
-    save_state(file_row_hashes)
+                with open(file_path, encoding='utf-8') as f:
+                    n_rows = sum(1 for _ in f) - 1  # skip header row
+                if n_rows < 0:
+                    n_rows = 0
 
-    event_handler = CSVHashEventHandler(file_row_hashes, state_lock, producer)
+                file_offsets[file_path] = n_rows
+                log.info(f"Set last offset {file_path}: {n_rows}")
+                # df = pd.read_csv(file_path)
+                # hashes = [row_hash(row) for _, row in df.iterrows()]
+                # file_row_hashes[file_path] = hashes
+                # log.debug(f"Loaded {len(hashes)} hashes for {file_path}")
+            except Exception as e:
+                # log.error(f"Initial load failed for {file_path}: {e}")
+                log.error(f"Could not set offset for {file_path}: {e}")
+    save_state(file_offsets)
+
+    event_handler = CSVHashEventHandler(file_offsets, state_lock, producer)
     observer = Observer()
     observer.schedule(event_handler, BASE_DIRECTORY, recursive=False)
     observer.start()
@@ -50,15 +56,16 @@ def monitor_directory(file_row_hashes, producer):
 
 
 def main():
-    file_row_hashes = load_state()
+    # file_row_hashes = load_state()
+    file_offsets = load_state()
     producer = get_kafka_producer()
 
     # Start initial crawl in a thread (or just call directly if you don't need async)
-    crawl_thread = threading.Thread(target=initial_crawl_and_send, args=(file_row_hashes, producer))
+    crawl_thread = threading.Thread(target=initial_crawl_and_send, args=(file_offsets, producer))
     crawl_thread.start()
     # Optionally: crawl_thread.join() before continuing, if you want to wait for crawl to finish
 
-    monitor_directory(file_row_hashes, producer)
+    monitor_directory(file_offsets, producer)
 
 
 if __name__ == "__main__":
