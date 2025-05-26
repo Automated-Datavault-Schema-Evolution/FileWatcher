@@ -11,5 +11,9 @@ services:
     volumes:
       - ./:/app
       - ${HOST_DATA_DIRECTORY}:/app/data
+      - ./state:/app/state
     # networks:
     #   - data_automation
+    environment:
+      - SSH_AUTH_SOCK=/ssh-agent
+    restart: unless-stopped
