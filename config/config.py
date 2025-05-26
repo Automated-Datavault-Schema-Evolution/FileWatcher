@@ -4,7 +4,7 @@ from dotenv import load_dotenv
 
 load_dotenv()
 # --- CONFIGURATION ---
-BASE_DIRECTORY = os.getenv('HOST_DATA_DIRECTORY')
+BASE_DIRECTORY = os.getenv('DATA_DIRECTORY')
 KAFKA_TOPIC = os.getenv('KAFKA_TOPIC', 'file_changes')
 KAFKA_BROKER = os.getenv('KAFKA_BROKER', 'localhost:9092')
 STATE_FILE = os.getenv('STATE_FILE', '/app/state/csv_kafka_state.pkl')
