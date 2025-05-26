@@ -1,0 +1,59 @@
+/data
+README.md
+
+
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Local Python virtual environments
+venv/
+.env/
+.envrc
+*.env
+
+# Jupyter Notebook checkpoints
+.ipynb_checkpoints
+
+# IDE/editor configs
+.vscode/
+.idea/
+*.swp
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Git
+.git/
+.gitignore
+
+# State and cache files
+*.pkl
+*.pickle
+*.db
+*.sqlite
+*.log
+*.bak
+
+# Kafka state files
+csv_kafka_state.*
+
+# Data/output directories (unless you want them in the image)
+csv_dir/
+output/
+data/
+tmp/
+logs/
+
+# Docker
+docker-compose.yml
+Dockerfile
+.dockerignore
+
+# (optional) test or build folders
+tests/
+build/
+dist/
