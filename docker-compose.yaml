@@ -7,7 +7,7 @@ services:
         - default
     container_name: Filewatcher
     env_file:
-      - .env
+      - .env.docker
     volumes:
       - ./:/app
       - ${HOST_DATA_DIRECTORY}:/app/data

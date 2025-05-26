@@ -5,6 +5,7 @@
 .idea
 *.pkl
 *.env
+*.env.docker
 
 /app/state
 
