@@ -9,7 +9,8 @@ from config.config import KAFKA_BROKER
 def get_kafka_producer():
     try:
         log.info(f"Creating Kafka producer for broker {KAFKA_BROKER}")
-        producer = KafkaProducer(bootstrap_servers=KAFKA_BROKER, compression_type='gzip', max_request_size=20971520)
+        producer = KafkaProducer(bootstrap_servers=KAFKA_BROKER, compression_type='gzip', max_request_size=20971520,
+                                 linger_ms=20, acks=1)
         log.info("Kafka producer created successfully")
         return producer
     except Exception as e:
