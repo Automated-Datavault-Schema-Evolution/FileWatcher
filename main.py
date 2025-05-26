@@ -35,7 +35,7 @@ def monitor_directory(file_row_hashes, producer):
     log.info(f"Monitoring directory: {BASE_DIRECTORY}")
     try:
         while True:
-            time.sleep(1)
+            time.sleep(0.01)
     except KeyboardInterrupt:
         log.critical("Keyboard interrupt received, stopping observer.")
         observer.stop()
