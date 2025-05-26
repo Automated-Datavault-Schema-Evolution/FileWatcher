@@ -12,6 +12,10 @@ state_lock = threading.Lock()  # For safe concurrent access
 
 
 def save_state(state):
+    state_dir = os.path.dirname(STATE_FILE)
+    if state_dir and not os.path.exists(state_dir):
+        os.makedirs(state_dir, exist_ok=True)
+
     try:
         with state_lock:
             with open(STATE_FILE, 'wb') as f:
@@ -22,14 +26,16 @@ def save_state(state):
 
 
 def load_state():
-    if os.path.exists(STATE_FILE):
-        try:
-            with open(STATE_FILE, 'rb') as f:
-                state = pickle.load(f)
+    try:
+        with open(STATE_FILE, 'rb') as f:
+            state = pickle.load(f)
             log.info(f"State loaded with {len(state)} files tracked.")
             return state
-        except Exception as e:
-            log.critical(f"Failed to load state: {e}\n{traceback.format_exc()}")
-            return {}
-    log.info("No state file found, starting fresh.")
-    return {}
+    except (FileNotFoundError, EOFError):
+        log.info("No valid state file found, starting fresh.")
+        save_state({})
+        return {}
+    except Exception as e:
+        log.critical(f"Failed to load state: {e}\n{traceback.format_exc()}")
+        save_state({})
+        return {}
