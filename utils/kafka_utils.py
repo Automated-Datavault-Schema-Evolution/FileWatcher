@@ -1,4 +1,6 @@
 import traceback
+import json
+import os
 
 from kafka import KafkaProducer
 from logger import log
@@ -38,8 +40,12 @@ def send_df_in_chunks(df, producer, topic, source_file, chunk_size_rows=1000, ma
     total_rows = len(df)
     for start in range(0, total_rows, chunk_size_rows):
         chunk = df.iloc[start:start + chunk_size_rows]
-        payload = chunk.to_csv(index=False)
-        payload_bytes = payload.encode('utf-8')
+        #payload = chunk.to_csv(index=False)
+        msg_dict = {
+            "filename": os.path.splitext(os.path.basename(source_file))[0],
+            "data": json.loads(chunk.to_json(orient="records"))
+        }
+        payload_bytes = json.dumps(msg_dict).encode("utf-8")
         if len(payload_bytes) > max_bytes:
             # If even a chunk is too big (e.g. lots of columns), halve and send recursively
             if chunk_size_rows > 1:
