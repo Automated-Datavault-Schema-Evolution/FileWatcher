@@ -4,6 +4,8 @@ import os
 
 from kafka import KafkaProducer
 from logger import log
+from datetime import datetime
+from zoneinfo import ZoneInfo
 
 from config.config import KAFKA_BROKER
 
@@ -43,6 +45,8 @@ def send_df_in_chunks(df, producer, topic, source_file, chunk_size_rows=1000, ma
         #payload = chunk.to_csv(index=False)
         msg_dict = {
             "filename": os.path.splitext(os.path.basename(source_file))[0],
+            "data_format": "json",
+            "ingestion_timestamp": datetime.now(ZoneInfo("Europe/Vienna")).isoformat(),
             "data": json.loads(chunk.to_json(orient="records"))
         }
         payload_bytes = json.dumps(msg_dict).encode("utf-8")
