@@ -44,7 +44,6 @@ def send_df_in_chunks(df, producer, topic, source_file, chunk_size_rows=1000, ma
     for start in range(0, total_rows, chunk_size_rows):
         chunk = df.iloc[start:start + chunk_size_rows]
         log.debug(f"Preparing chunk rows {start} to {start + len(chunk) - 1}")
-        #payload = chunk.to_csv(index=False)
         msg_dict = {
             "filename": os.path.splitext(os.path.basename(source_file))[0],
             "data_format": "json",
@@ -74,3 +73,10 @@ def send_df_in_chunks(df, producer, topic, source_file, chunk_size_rows=1000, ma
         fut = producer.send(topic, payload_bytes)
         fut.add_callback(on_success)
         fut.add_errback(on_error)
+
+        # Ensure all pending messages are sent, especially for large batches
+    try:
+        producer.flush()
+        log.debug(f"Kafka producer flushed after sending {total_rows} rows from {source_file}")
+    except Exception as e:
+        log.error(f"Failed to flush Kafka producer: {e}")
