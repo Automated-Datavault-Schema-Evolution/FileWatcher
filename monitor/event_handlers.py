@@ -1,4 +1,6 @@
+import os
 import time
+import psutil
 from concurrent.futures import ThreadPoolExecutor
 
 from logger import log
@@ -9,8 +11,24 @@ from utils.hash_utils import get_new_rows_by_offset
 from utils.kafka_utils import send_df_in_chunks
 from utils.state_utils import save_state
 
-# TODO: Dynamic allocation based current CPU-LOAD
-executor = ThreadPoolExecutor(max_workers=4)
+# Determine thread pool size based on current CPU load. If the CPU is heavily
+# utilized the executor will use fewer workers. At minimum one worker is
+# available and at most it uses all logical CPUs.
+def _dynamic_worker_count():
+    cpu_count = os.cpu_count() or 1
+    # psutil.cpu_percent with a small interval gives a recent utilization value
+    try:
+        usage = psutil.cpu_percent(interval=0.1)
+    except Exception:
+        usage = 0
+    available_ratio = max(0.1, (100 - usage) / 100)
+    workers = max(1, int(cpu_count * available_ratio))
+    log.debug(
+        f"Initializing ThreadPoolExecutor with {workers} workers – CPU usage {usage}%"
+    )
+    return workers
+
+executor = ThreadPoolExecutor(max_workers=_dynamic_worker_count())
 
 
 class CSVHashEventHandler(FileSystemEventHandler):
