@@ -40,8 +40,10 @@ def send_df_in_chunks(df, producer, topic, source_file, chunk_size_rows=1000, ma
     - max_bytes: safety limit per message in bytes (default: 1MB)
     """
     total_rows = len(df)
+    log.debug(f"Sending DataFrame from {source_file} with {total_rows} rows in chunks")
     for start in range(0, total_rows, chunk_size_rows):
         chunk = df.iloc[start:start + chunk_size_rows]
+        log.debug(f"Preparing chunk rows {start} to {start + len(chunk) - 1}")
         #payload = chunk.to_csv(index=False)
         msg_dict = {
             "filename": os.path.splitext(os.path.basename(source_file))[0],
@@ -52,8 +54,12 @@ def send_df_in_chunks(df, producer, topic, source_file, chunk_size_rows=1000, ma
         payload_bytes = json.dumps(msg_dict).encode("utf-8")
         if len(payload_bytes) > max_bytes:
             # If even a chunk is too big (e.g. lots of columns), halve and send recursively
+            log.debug(
+                f"Chunk from {source_file} exceeds max size {max_bytes} bytes, current {len(payload_bytes)} bytes"
+            )
             if chunk_size_rows > 1:
                 half = chunk_size_rows // 2
+                log.debug(f"Splitting chunk into halves of {half} rows")
                 send_df_in_chunks(chunk.iloc[:half], producer, topic, source_file, half, max_bytes)
                 send_df_in_chunks(chunk.iloc[half:], producer, topic, source_file, half, max_bytes)
             else:
@@ -64,6 +70,7 @@ def send_df_in_chunks(df, producer, topic, source_file, chunk_size_rows=1000, ma
             f"Sent chunk with {len(chunk)} rows from {source_file}.",
             f"Failed to send chunk with {len(chunk)} rows from {source_file}."
         )
+        log.debug(f"Sending chunk with {len(chunk)} rows to topic {topic}")
         fut = producer.send(topic, payload_bytes)
         fut.add_callback(on_success)
         fut.add_errback(on_error)

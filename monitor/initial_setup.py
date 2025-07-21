@@ -11,14 +11,17 @@ from utils.state_utils import save_state, state_lock, load_state
 
 
 def process_single_file_initial(file_path, producer, file_row_hashes):
+    log.debug(f"Initial processing of {file_path}")
     try:
         df = pd.read_csv(file_path)
+        log.debug(f"Loaded {len(df)} rows from {file_path}")
         if not df.empty:
             send_df_in_chunks(df, producer, KAFKA_TOPIC, chunk_size_rows=CHUNK_SIZE_ROWS,
                               max_bytes=MAX_CHUNK_BYTES, source_file=file_path)
             hashes = [row_hash(row) for _, row in df.iterrows()]
             with state_lock:
                 file_row_hashes[file_path] = hashes
+            log.debug(f"Stored {len(hashes)} row hashes for {file_path}")
         else:
             log.info(f"File {file_path} is empty. Skipping.")
     except Exception as e:
@@ -37,8 +40,10 @@ def initial_crawl_and_send(file_row_hashes, producer):
         for f in os.listdir(BASE_DIRECTORY)
         if f.endswith('.csv')
     ]
+    log.debug(f"Found {len(files_to_process)} files for initial crawl")
     with concurrent.futures.ThreadPoolExecutor() as executor:
         for file_path in files_to_process:
             executor.submit(process_single_file_initial, file_path, producer, file_row_hashes)
     save_state(file_row_hashes)
+    log.debug("Initial crawl state saved")
     log.info("Initial crawl and send completed.")
