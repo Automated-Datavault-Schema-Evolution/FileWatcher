@@ -7,7 +7,7 @@ from logger import log
 
 def row_hash(row):
     hashed = hashlib.md5(','.join(map(str, row)).encode()).hexdigest()
-    # log.debug(f"[DIAGNOSTIC] Hashed row: {row.values.tolist()} -> {hashed}")
+    log.debug(f"Hashed row {row.values.tolist()} -> {hashed}")
     return hashed
 
 
@@ -19,6 +19,7 @@ def get_new_rows_by_offset(file_path, last_row_idx):
         return df
     except Exception as e:
         log.error(f"Failed to read {file_path}: {e}")
+        log.debug("Returning empty DataFrame due to read failure")
         return pd.DataFrame()
 
 
@@ -29,6 +30,7 @@ def get_new_rows_by_hash(file_path, file_row_hashes, state_lock):
         log.debug(f"Loaded {len(df)} rows from {file_path}")
     except Exception as e:
         log.error(f"Failed to read {file_path}: {e}")
+        log.debug("Returning None due to read failure")
         return None
 
     with state_lock:

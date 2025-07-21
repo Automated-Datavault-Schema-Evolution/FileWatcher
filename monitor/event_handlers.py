@@ -22,16 +22,22 @@ class CSVHashEventHandler(FileSystemEventHandler):
         self.producer = producer
 
     def process_append(self, file_path):
+        log.debug(f"Processing append for {file_path}")
         with self.state_lock:
             last_idx = self.file_offsets.get(file_path, 0)
+        log.debug(f"Last known row index for {file_path}: {last_idx}")
 
         df_new = get_new_rows_by_offset(file_path, last_idx)
         if not df_new.empty:
+            log.debug(f"Sending {len(df_new)} new rows from {file_path}")
             send_df_in_chunks(df_new, self.producer, KAFKA_TOPIC, chunk_size_rows=CHUNK_SIZE_ROWS,
                               max_bytes=MAX_CHUNK_BYTES, source_file=file_path)
             with self.state_lock:
                 self.file_offsets[file_path] = last_idx + len(df_new)
             save_state(self.file_offsets)
+            log.debug(f"Updated offset for {file_path} to {self.file_offsets[file_path]}")
+        else:
+            log.debug(f"No new rows found for {file_path}")
 
     def on_modified(self, event):
         if not event.is_directory and event.src_path.endswith('.csv'):
@@ -47,6 +53,8 @@ class CSVHashEventHandler(FileSystemEventHandler):
             #    log.debug(f"No new rows to send for {event.src_path}")
             executor.submit(self.process_append, event.src_path)
             log.info(f"Processed modified event in {time.time() - start:.2f}s")
+        else:
+            log.debug(f"Ignored modification event for {event.src_path}")
 
     def on_created(self, event):
         if not event.is_directory and event.src_path.endswith('.csv'):
@@ -62,3 +70,5 @@ class CSVHashEventHandler(FileSystemEventHandler):
             #     log.debug(f"No new rows to send for new file {event.src_path}")
             executor.submit(self.process_append, event.src_path)
             log.info(f"Processed new file event in {time.time() - start:.2f}s")
+        else:
+            log.debug(f"Ignored creation event for {event.src_path}")
