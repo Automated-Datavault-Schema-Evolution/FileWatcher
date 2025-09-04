@@ -13,11 +13,11 @@ services:
       - ${HOST_DATA_DIRECTORY}:/app/data
       - ./state:/app/state
     networks:
-      - data_automation-net
+      - data-automation-net
     environment:
       - SSH_AUTH_SOCK=/ssh-agent
     restart: unless-stopped
 
 networks:
-  data_automation-net:
+  data-automation-net:
     external: true
