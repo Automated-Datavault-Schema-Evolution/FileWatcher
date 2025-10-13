@@ -42,7 +42,7 @@ class CSVHashEventHandler(FileSystemEventHandler):
         log.debug(f"Processing append for {file_path}")
         with self.state_lock:
             last_idx = self.file_offsets.get(file_path, 0)
-        log.debug(f"Last known row index for {file_path}: {last_idx}")
+        # log.debug(f"Last known row index for {file_path}: {last_idx}")
 
         df_new = get_new_rows_by_offset(file_path, last_idx)
         if not df_new.empty:
