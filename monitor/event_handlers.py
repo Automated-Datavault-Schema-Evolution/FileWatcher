@@ -8,7 +8,7 @@ from watchdog.events import FileSystemEventHandler
 
 from config.config import KAFKA_TOPIC, CHUNK_SIZE_ROWS, MAX_CHUNK_BYTES
 from utils.hash_utils import get_new_rows_by_offset
-from utils.kafka_utils import send_df_in_chunks
+from utils.kafka_utils import send_df_in_chunks, send_schema_notification_for_file
 from utils.state_utils import save_state
 
 # Determine thread pool size based on current CPU load. If the CPU is heavily
@@ -55,6 +55,9 @@ class CSVHashEventHandler(FileSystemEventHandler):
             log.debug(f"Updated offset for {file_path} to {self.file_offsets[file_path]}")
         else:
             log.debug(f"No new rows found for {file_path}")
+
+        # Emit a schema snapshot event for SEF
+        send_schema_notification_for_file(self.producer, file_path)
 
     def on_modified(self, event):
         if not event.is_directory and event.src_path.endswith('.csv'):

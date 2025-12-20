@@ -6,7 +6,7 @@ from logger import log
 
 from config.config import BASE_DIRECTORY, KAFKA_TOPIC, CHUNK_SIZE_ROWS, MAX_CHUNK_BYTES
 from utils.hash_utils import row_hash
-from utils.kafka_utils import send_df_in_chunks
+from utils.kafka_utils import send_df_in_chunks, send_schema_notification_for_file
 from utils.state_utils import save_state, state_lock, load_state
 
 
@@ -24,6 +24,9 @@ def process_single_file_initial(file_path, producer, file_row_hashes):
             log.debug(f"Stored {len(hashes)} row hashes for {file_path}")
         else:
             log.info(f"File {file_path} is empty. Skipping.")
+
+        # Emit a schema snapshot event for SEF
+        send_schema_notification_for_file(producer, file_path)
     except Exception as e:
         log.critical(f"Initial crawl failed for {file_path}: {e}")
 

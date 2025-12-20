@@ -16,6 +16,11 @@ CHUNK_SIZE_ROWS=1000
 MAX_CHUNK_BYTES=20971520
 
 STATE_FILE=/app/state/csv_kafka_state.pkl
+
+# New SEF schema events topic
+SEF_SCHEMA_TOPIC=filewatcher.events
+SEF_SOURCE_SYSTEM=csv_filewatcher
+SEF_DOMAIN=demo
 ```
 
 ### .env.docker (docker deployment)
@@ -33,6 +38,11 @@ MAX_CHUNK_BYTES=20971520
 
 STATE_FILE=/app/state/csv_kafka_state.pkl
 # STATE_FILE=csv_kafka_state.pkl
+
+# New SEF schema events topic
+SEF_SCHEMA_TOPIC=filewatcher.events
+SEF_SOURCE_SYSTEM=csv_filewatcher
+SEF_DOMAIN=demo
 ```
 
 ## Deployment and Scaling
