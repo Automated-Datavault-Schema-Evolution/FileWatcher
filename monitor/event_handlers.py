@@ -8,7 +8,7 @@ from watchdog.events import FileSystemEventHandler
 
 from config.config import KAFKA_TOPIC, CHUNK_SIZE_ROWS, MAX_CHUNK_BYTES
 from utils.hash_utils import get_new_rows_by_offset
-from utils.kafka_utils import send_df_in_chunks, send_schema_notification_for_file
+from utils.kafka_utils import send_df_in_chunks, send_schema_notification_for_file, build_schema_notification
 from utils.state_utils import save_state
 
 # Determine thread pool size based on current CPU load. If the CPU is heavily
@@ -37,11 +37,13 @@ class CSVHashEventHandler(FileSystemEventHandler):
         self.file_offsets = file_offsets
         self.state_lock = state_lock
         self.producer = producer
+        self.schema_fingerprints = {}
 
-    def process_append(self, file_path):
+    def process_append(self, file_path, sef_handle=True):
         log.debug(f"Processing append for {file_path}")
-        # Emit a schema snapshot event for SEF
-        send_schema_notification_for_file(self.producer, file_path)
+        if sef_handle:
+            # Emit a schema snapshot event for SEF
+            send_schema_notification_for_file(self.producer, file_path)
         with self.state_lock:
             last_idx = self.file_offsets.get(file_path, 0)
         # log.debug(f"Last known row index for {file_path}: {last_idx}")
@@ -62,16 +64,62 @@ class CSVHashEventHandler(FileSystemEventHandler):
         if not event.is_directory and event.src_path.endswith('.csv'):
             log.info(f"Detected modification: {event.src_path}")
             start = time.time()
-            executor.submit(self.process_append, event.src_path)
+            executor.submit(self.process_append, event.src_path, True)
             log.info(f"Processed modified event in {time.time() - start:.2f}s")
         else:
             log.debug(f"Ignored modification event for {event.src_path}")
 
     def on_created(self, event):
         if not event.is_directory and event.src_path.endswith('.csv'):
-            log.info(f"Detected new CSV file: {event.src_path}")
+            log.info(f"Detected new CSV file (created): {event.src_path}")
             start = time.time()
-            executor.submit(self.process_append, event.src_path)
+            self._send_schema_notification_and_cache(event.src_path)
+            executor.submit(self.process_append, event.src_path, False)
             log.info(f"Processed new file event in {time.time() - start:.2f}s")
         else:
             log.debug(f"Ignored creation event for {event.src_path}")
+
+    def on_moved(self, event):
+        if event.is_directory:
+            log.debug(f"Ignored move event for directory {event.dest_path}")
+            return
+
+        if event.dest_path.endswith('.csv'):
+            log.info(f"Detected new CSV file (moved): {event.dest_path}")
+            start = time.time()
+            self._send_schema_notification_and_cache(event.dest_path)
+            executor.submit(self.process_append, event.dest_path, False)
+            log.info(f"Processed moved file event in {time.time() - start:.2f}s")
+        else:
+            log.debug(f"Ignored move event for {event.dest_path}")
+
+    def _send_schema_notification_and_cache(self, file_path: str) -> None:
+        notification = build_schema_notification(file_path)
+        if notification is None:
+            log.debug(f"No schema notification built for {file_path}; skipping send.")
+            return
+
+        fingerprint = notification.get("header", {}).get("schema_fingerprint")
+        if fingerprint:
+            self.schema_fingerprints[file_path] = fingerprint
+        send_schema_notification_for_file(self.producer, file_path)
+
+    def _maybe_send_schema_notification(self, file_path: str) -> None:
+        notification = build_schema_notification(file_path)
+        if notification is None:
+            log.debug(f"No schema notification built for {file_path}; skipping send.")
+            return
+
+        fingerprint = notification.get("header", {}).get("schema_fingerprint")
+        if not fingerprint:
+            log.debug(f"No schema fingerprint available for {file_path}; skipping send.")
+            return
+
+        previous_fingerprint = self.schema_fingerprints.get(file_path)
+        if previous_fingerprint == fingerprint:
+            log.debug(f"No schema change detected for {file_path}; skipping schema event.")
+            return
+
+        log.info(f"Schema change detected for {file_path}; sending schema event.")
+        self.schema_fingerprints[file_path] = fingerprint
+        send_schema_notification_for_file(self.producer, file_path)
