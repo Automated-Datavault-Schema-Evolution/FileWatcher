@@ -40,6 +40,8 @@ class CSVHashEventHandler(FileSystemEventHandler):
 
     def process_append(self, file_path):
         log.debug(f"Processing append for {file_path}")
+        # Emit a schema snapshot event for SEF
+        send_schema_notification_for_file(self.producer, file_path)
         with self.state_lock:
             last_idx = self.file_offsets.get(file_path, 0)
         # log.debug(f"Last known row index for {file_path}: {last_idx}")
@@ -55,9 +57,6 @@ class CSVHashEventHandler(FileSystemEventHandler):
             log.debug(f"Updated offset for {file_path} to {self.file_offsets[file_path]}")
         else:
             log.debug(f"No new rows found for {file_path}")
-
-        # Emit a schema snapshot event for SEF
-        send_schema_notification_for_file(self.producer, file_path)
 
     def on_modified(self, event):
         if not event.is_directory and event.src_path.endswith('.csv'):

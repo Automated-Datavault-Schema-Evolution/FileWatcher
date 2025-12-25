@@ -12,6 +12,8 @@ from utils.state_utils import save_state, state_lock, load_state
 
 def process_single_file_initial(file_path, producer, file_row_hashes):
     log.debug(f"Initial processing of {file_path}")
+    # Emit a schema snapshot event for SEF
+    send_schema_notification_for_file(producer, file_path)
     try:
         df = pd.read_csv(file_path)
         log.debug(f"Loaded {len(df)} rows from {file_path}")
@@ -25,8 +27,6 @@ def process_single_file_initial(file_path, producer, file_row_hashes):
         else:
             log.info(f"File {file_path} is empty. Skipping.")
 
-        # Emit a schema snapshot event for SEF
-        send_schema_notification_for_file(producer, file_path)
     except Exception as e:
         log.critical(f"Initial crawl failed for {file_path}: {e}")
 
