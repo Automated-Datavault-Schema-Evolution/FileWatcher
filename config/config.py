@@ -18,3 +18,16 @@ SEF_SCHEMA_TOPIC = os.getenv('SEF_SCHEMA_TOPIC', 'sef_schema_events')
 SEF_SOURCE_SYSTEM = os.getenv('SEF_SOURCE_SYSTEM', 'filewatcher')
 # Optional logical domain / subject area for grouping datasets
 SEF_DOMAIN = os.getenv('SEF_DOMAIN', 'default')
+
+# ---- WATCHDOG OBSERVER SELECTION ----
+def _default_observer() -> str:
+    # In Docker Desktop bind mounts, inotify often misses events; polling is more reliable.
+    if os.path.exists("/.dockerenv"):
+        return "polling"
+    return "inotify"
+
+WATCHDOG_OBSERVER = os.getenv("WATCHDOG_OBSERVER", _default_observer()).strip().lower()
+USE_POLLING_OBSERVER = WATCHDOG_OBSERVER in {"polling", "poll", "true", "1", "yes", "y"}
+
+# Polling interval for PollingObserver (best-effort; watchdog versions vary)
+WATCHDOG_POLL_INTERVAL_SEC = float(os.getenv("WATCHDOG_POLL_INTERVAL_SEC", "1.0"))

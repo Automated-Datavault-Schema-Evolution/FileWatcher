@@ -8,8 +8,39 @@ from watchdog.events import FileSystemEventHandler
 
 from config.config import KAFKA_TOPIC, CHUNK_SIZE_ROWS, MAX_CHUNK_BYTES
 from utils.hash_utils import get_new_rows_by_offset
-from utils.kafka_utils import send_df_in_chunks, send_schema_notification_for_file, build_schema_notification
+from utils.kafka_utils import send_df_in_chunks, send_schema_notification_for_file, build_schema_notification, \
+    send_schema_notification
 from utils.state_utils import save_state
+
+
+def _wait_file_stable(path: str, stable_for_s: float = 0.2, timeout_s: float = 2.0) -> bool:
+    """
+    Return True if (size, mtime) stay unchanged for stable_for_s within timeout_s.
+    Helps avoid reading partially rewritten CSV headers.
+    """
+    deadline = time.time() + timeout_s
+    last = None
+    stable_since = None
+
+    while time.time() < deadline:
+        try:
+            st = os.stat(path)
+        except FileNotFoundError:
+            return False
+
+        cur = (st.st_size, st.st_mtime)
+        if cur == last:
+            if stable_since is None:
+                stable_since = time.time()
+            elif (time.time() - stable_since) >= stable_for_s:
+                return True
+        else:
+            last = cur
+            stable_since = None
+
+        time.sleep(0.05)
+
+    return False
 
 # Determine thread pool size based on current CPU load. If the CPU is heavily
 # utilized the executor will use fewer workers. At minimum one worker is
@@ -41,18 +72,25 @@ class CSVHashEventHandler(FileSystemEventHandler):
 
     def process_append(self, file_path, sef_handle=True):
         log.debug(f"Processing append for {file_path}")
+
         if sef_handle:
-            # Emit a schema snapshot event for SEF
-            send_schema_notification_for_file(self.producer, file_path)
+            # Emit schema snapshot only when fingerprint changed (dedupe)
+            self._maybe_send_schema_notification(file_path)
+
         with self.state_lock:
             last_idx = self.file_offsets.get(file_path, 0)
-        # log.debug(f"Last known row index for {file_path}: {last_idx}")
 
         df_new = get_new_rows_by_offset(file_path, last_idx)
         if not df_new.empty:
             log.debug(f"Sending {len(df_new)} new rows from {file_path}")
-            send_df_in_chunks(df_new, self.producer, KAFKA_TOPIC, chunk_size_rows=CHUNK_SIZE_ROWS,
-                              max_bytes=MAX_CHUNK_BYTES, source_file=file_path)
+            send_df_in_chunks(
+                df_new,
+                self.producer,
+                KAFKA_TOPIC,
+                chunk_size_rows=CHUNK_SIZE_ROWS,
+                max_bytes=MAX_CHUNK_BYTES,
+                source_file=file_path,
+            )
             with self.state_lock:
                 self.file_offsets[file_path] = last_idx + len(df_new)
             save_state(self.file_offsets)
@@ -94,6 +132,10 @@ class CSVHashEventHandler(FileSystemEventHandler):
             log.debug(f"Ignored move event for {event.dest_path}")
 
     def _send_schema_notification_and_cache(self, file_path: str) -> None:
+        if not _wait_file_stable(file_path):
+            log.debug(f"File not stable yet for schema read: {file_path}")
+            return
+
         notification = build_schema_notification(file_path)
         if notification is None:
             log.debug(f"No schema notification built for {file_path}; skipping send.")
@@ -101,10 +143,17 @@ class CSVHashEventHandler(FileSystemEventHandler):
 
         fingerprint = notification.get("header", {}).get("schema_fingerprint")
         if fingerprint:
-            self.schema_fingerprints[file_path] = fingerprint
-        send_schema_notification_for_file(self.producer, file_path)
+            with self.state_lock:
+                self.schema_fingerprints[file_path] = fingerprint
+
+        # Send exactly what we fingerprinted (no second read)
+        send_schema_notification(self.producer, notification)
 
     def _maybe_send_schema_notification(self, file_path: str) -> None:
+        if not _wait_file_stable(file_path):
+            log.debug(f"File not stable yet for schema read: {file_path}")
+            return
+
         notification = build_schema_notification(file_path)
         if notification is None:
             log.debug(f"No schema notification built for {file_path}; skipping send.")
@@ -115,11 +164,14 @@ class CSVHashEventHandler(FileSystemEventHandler):
             log.debug(f"No schema fingerprint available for {file_path}; skipping send.")
             return
 
-        previous_fingerprint = self.schema_fingerprints.get(file_path)
-        if previous_fingerprint == fingerprint:
-            log.debug(f"No schema change detected for {file_path}; skipping schema event.")
-            return
+        with self.state_lock:
+            previous_fingerprint = self.schema_fingerprints.get(file_path)
+            if previous_fingerprint == fingerprint:
+                log.debug(f"No schema change detected for {file_path}; skipping schema event.")
+                return
 
-        log.info(f"Schema change detected for {file_path}; sending schema event.")
-        self.schema_fingerprints[file_path] = fingerprint
-        send_schema_notification_for_file(self.producer, file_path)
+            log.info(f"Schema change detected for {file_path}; sending schema event.")
+            self.schema_fingerprints[file_path] = fingerprint
+
+        # Send exactly what we fingerprinted (no second read)
+        send_schema_notification(self.producer, notification)

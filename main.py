@@ -3,9 +3,13 @@ import threading
 import time
 
 from logger import log
-from watchdog.observers import Observer
+from watchdog.observers import Observer as InotifyObserver
+try:
+    from watchdog.observers.polling import PollingObserver
+except Exception:
+    PollingObserver = None
 
-from config.config import BASE_DIRECTORY
+from config.config import BASE_DIRECTORY, USE_POLLING_OBSERVER, WATCHDOG_POLL_INTERVAL_SEC
 from monitor.event_handlers import CSVHashEventHandler
 from monitor.initial_setup import initial_crawl_and_send
 from utils.kafka_utils import get_kafka_producer
@@ -36,7 +40,18 @@ def monitor_directory(file_offsets, producer):
 
     log.debug("Initializing watchdog observer and event handler")
     event_handler = CSVHashEventHandler(file_offsets, state_lock, producer)
-    observer = Observer()
+    if USE_POLLING_OBSERVER:
+        if PollingObserver is None:
+            log.warning("PollingObserver not available; falling back to default Observer.")
+            observer = InotifyObserver()
+        else:
+            # Some watchdog versions accept `timeout=...`, others don’t—handle both.
+            try:
+                observer = PollingObserver(timeout=WATCHDOG_POLL_INTERVAL_SEC)
+            except TypeError:
+                observer = PollingObserver()
+    else:
+        observer = InotifyObserver()
     observer.schedule(event_handler, BASE_DIRECTORY, recursive=False)
     observer.start()
     log.info(f"Monitoring directory: {BASE_DIRECTORY}")
