@@ -1,76 +1,107 @@
 # FileWatcher
 
-## Environmental Files
+FileWatcher monitors a directory of CSV files, emits schema notifications, and publishes appended row deltas to Kafka. It is the ingestion edge of the automated schema-evolution stack.
 
-Create two `.env` files with the configuration for local runs and for container deployment.
+## Responsibilities
 
-### .env (local testing)
-```yaml
-# Directory where CSV files are located
-DATA_DIRECTORY=C:\\path\\to\\local\\data
+- Perform an initial crawl of the watched directory.
+- Persist file offsets and hashes in local state.
+- Detect file create and modify events.
+- Emit append-only row deltas to Kafka.
+- Emit schema notifications when source file headers change.
 
-# Kafka configuration
-KAFKA_BROKER=localhost:9092
-KAFKA_TOPIC=csv_deltas
-CHUNK_SIZE_ROWS=1000
-MAX_CHUNK_BYTES=20971520
+## Architecture
 
-STATE_FILE=/app/state/csv_kafka_state.pkl
+### Mermaid processing flow
 
-# New SEF schema events topic
-SEF_SCHEMA_TOPIC=filewatcher.events
-SEF_SOURCE_SYSTEM=csv_filewatcher
-SEF_DOMAIN=demo
+```mermaid
+flowchart TD
+    A[Initial crawl] --> B[Load offsets and hashes]
+    B --> C[Watch filesystem events]
+    C --> D[Read appended CSV rows]
+    D --> E[Detect header or schema changes]
+    E --> F[Chunk appended rows]
+    F --> G[Publish Kafka row events]
+    E --> H[Publish schema notifications]
 ```
 
-### .env.docker (docker deployment)
-```yaml
-# Directory where CSV files are located (inside the application container)
-DATA_DIRECTORY=./data
-HOST_DATA_DIRECTORY=C:\Users\alexm\Desktop\repos\automated_datavault_schema_evolution\data
 
+The refactor keeps filesystem and watchdog effects at the edge.
 
-# Kafka configuration (these point to the externally managed Kafka)
-KAFKA_BROKER=kafka:9092
-KAFKA_TOPIC=csv_deltas
-CHUNK_SIZE_ROWS=1000
-MAX_CHUNK_BYTES=20971520
+- `domain/` contains file-event classification and offset calculations.
+- `monitor/` contains the watchdog shell and bootstrap crawl.
+- `helper/` contains filesystem and concurrency adapters.
+- `utils/` contains hashing, Kafka publishing, and state persistence.
+- `docs/` contains architecture and function-level documentation.
 
-STATE_FILE=/app/state/csv_kafka_state.pkl
-# STATE_FILE=csv_kafka_state.pkl
+## Runtime interfaces
 
-# New SEF schema events topic
-SEF_SCHEMA_TOPIC=filewatcher.events
-SEF_SOURCE_SYSTEM=csv_filewatcher
-SEF_DOMAIN=demo
+### Inputs
+- local or mounted CSV files in the watched directory
+- watchdog filesystem events
+
+### Outputs
+- Kafka topic: `csv_deltas`
+- Kafka topic: `filewatcher.events`
+- persisted state file containing offsets and hashes
+
+## Configuration
+
+The repo-local `.env` file is the main runtime configuration source.
+
+Key groups in `.env`:
+
+### File watching
+- `DATA_DIRECTORY`
+- `HOST_DATA_DIRECTORY`
+- `STATE_FILE`
+- `WATCHDOG_OBSERVER`
+- `WATCHDOG_POLL_INTERVAL_SEC`
+
+### Kafka and chunking
+- `KAFKA_BROKER`
+- `KAFKA_TOPIC`
+- `CHUNK_SIZE_ROWS`
+- `MAX_CHUNK_BYTES`
+
+### Schema-notification publishing
+- `SEF_SCHEMA_TOPIC`
+- `SEF_SOURCE_SYSTEM`
+- `SEF_DOMAIN`
+
+## Data flow
+
+### Mermaid data-flow diagram
+
+```mermaid
+flowchart LR
+    Files[(CSV files)] --> FW[FileWatcher]
+    FW -- csv_deltas --> DLH[DataLakeHandler]
+    FW -- filewatcher.events --> SEF[SchemaEvolutionFramework]
+    FW --> State[(Offset / hash state file)]
 ```
 
-## Deployment and Scaling
+
+1. FileWatcher performs an initial crawl and records baseline offsets and file hashes.
+2. A CSV create or modify event is detected.
+3. The service computes new appended rows since the prior offset.
+4. File header changes are published to `filewatcher.events`.
+5. Appended rows are chunked and published to `csv_deltas`.
+6. DataLakeHandler consumes row deltas and SchemaEvolutionFramework consumes schema notifications.
+
+## Operations
+
+### Local run
+```bash
+pip install -r requirements.txt
+python main.py
+```
 
 ### Docker Compose
-To start the service locally with Docker Compose run:
 ```bash
-docker-compose up -d
+docker compose up --build
 ```
 
-### Kubernetes
-The `k8s` directory contains example manifests for running FileWatcher in a Kubernetes cluster.
-Deploy them with:
-```bash
-kubectl apply -f k8s/persistent-volume.yaml
-kubectl apply -f k8s/deployment.yaml
-kubectl apply -f k8s/service.yaml
-kubectl apply -f k8s/hpa.yaml
-```
+## Licensing model
 
-Scale the deployment manually if needed:
-```bash
-kubectl scale deployment filewatcher --replicas=<desired_number>
-```
-The included Horizontal Pod Autoscaler (`k8s/hpa.yaml`) automatically adjusts
-replicas based on CPU usage.
-
-### Spawning a New Cluster
-If a new cluster is required, create one using tools such as `kind`, `kubeadm`,
-or a managed Kubernetes provider. Once the cluster is available, apply the
-manifests from the `k8s` folder to deploy FileWatcher.
+This repository is licensed under the Apache License, Version 2.0. You may use and modify the source under the terms in `LICENSE`. Watched source data, generated state files, and emitted event payloads remain deployment data and are not covered by any separate documentation license grant.
