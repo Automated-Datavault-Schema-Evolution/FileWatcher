@@ -1,0 +1,23 @@
+services:
+  filewatcher:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      ssh:
+        - default
+    container_name: Filewatcher
+    env_file:
+      - .env
+    volumes:
+      - ./:/app
+      - ${HOST_DATA_DIRECTORY}:/app/data
+      - ./state:/app/state
+    networks:
+      - data-automation-net
+    environment:
+      - SSH_AUTH_SOCK=/ssh-agent
+    restart: unless-stopped
+
+networks:
+  data-automation-net:
+    external: true

@@ -1,0 +1,6 @@
+watchdog
+kafka-python
+pandas
+python-dotenv
+psutil
+git+https://github.com/Automated-Datavault-Schema-Evolution/MyLogger.git@v0.2.1#egg=mylogger
